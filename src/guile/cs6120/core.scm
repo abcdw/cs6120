@@ -84,13 +84,13 @@
         "/data/abcdw/work/sampsyo/bril/tmp/jmp.json"
       (lambda (port)
         (json->scm port))))
-  "hi")
 
-(vector-map
- (lambda (i x)
-   (format #t "=============\n")
-   ((@ (ice-9 pretty-print) pretty-print)
-    (instructions->blocks (function-instructions x)))
-   (blocks->control-flow-graph
-    (instructions->blocks (function-instructions x))))
- (assoc-ref bril-program "functions"))
+  (vector-map
+   (lambda (i x)
+     (format #t "=============\n")
+     ((@ (ice-9 pretty-print) pretty-print)
+      (instructions->blocks (function-instructions x)))
+     (blocks->control-flow-graph
+      (instructions->blocks (function-instructions x))))
+   (assoc-ref bril-program "functions"))
+  "hi")
