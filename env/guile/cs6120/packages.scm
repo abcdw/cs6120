@@ -129,6 +129,15 @@
 
 ;; ((@ (rde api store) build-with-store) core-channels-package)
 
+(define-public bril
+  (origin
+    (method git-fetch)
+    (uri (git-reference
+          (url "https://github.com/sampsyo/bril")
+          (commit "ac9bbaa26cd342d7bae075d9d9b7b6591a4155a2")))
+    (file-name (git-file-name "bril" "0.1.0"))
+    (sha256
+     (base32 "1gp2nyqiwbcgbx8z5ybprvmrsz7lfjpm4hbbzhsffhqv71rs6c7c"))))
 
 (define-public deno
   (package
