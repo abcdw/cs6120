@@ -8,4 +8,6 @@ GUILE_DEV=${GUILE} -L src/guile -L test/guile -L dev/guile -L env/guile
 
 ares:
 	$(GUILE_DEV) \
-	-c "((@ (ares server) run-nrepl-server))"
+	-c \
+	"(begin (use-modules (guix gexp)) #;(load gexp reader macro globally) \
+((@ (ares server) run-nrepl-server)))"
