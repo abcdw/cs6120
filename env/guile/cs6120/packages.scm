@@ -2,6 +2,7 @@
   #:use-module (cs6120 channels)
   #:use-module (gnu packages)
   #:use-module (gnu packages base)
+  #:use-module (gnu packages compression)
   #:use-module (gnu packages package-management)
   #:use-module (gnu packages guile)
   #:use-module (gnu packages gcc)
@@ -147,6 +148,7 @@
     (list
      #:install-plan #~'(("deno" "bin/"))
      #:patchelf-plan #~'(("deno" ("gcc:lib" "glibc")))))
+   (native-inputs (list unzip))
    (inputs `(("gcc:lib" ,gcc "lib")
              ("glibc" ,glibc)))
    (supported-systems '("x86_64-linux"))
