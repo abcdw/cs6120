@@ -1,6 +1,7 @@
 (define-module (cs6120 packages)
   #:use-module (cs6120 channels)
   #:use-module (gnu packages)
+  #:use-module (gnu packages base)
   #:use-module (gnu packages package-management)
   #:use-module (gnu packages guile)
   #:use-module (gnu packages gcc)
@@ -12,6 +13,7 @@
   #:use-module (guix git-download)
   #:use-module (guix channels)
   #:use-module (guix build-system channel)
+  #:use-module (guix build-system guile)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (srfi srfi-1)
   #:use-module (nonguix build-system binary)
@@ -48,20 +50,84 @@
       (inputs (modify-inputs (package-inputs guix)
                 (replace "guile" guile-next))))))
 
-(define-public (guix-for-channels channels)
-  "Return a package corresponding to CHANNELS."
+(define (channel->git-checkout channel)
+  (git-checkout
+   (url (channel-url channel))
+   (commit (channel-commit channel))))
+
+(define* (channels-union name channels
+                         #:key
+                         (quiet? #f)
+                         (resolve-collision 'resolve-collision/default))
+  "Return a directory that is the union of CHANNELS sources."
+  (define log-port
+    (if quiet?
+        (gexp (%make-void-port "w"))
+        (gexp (current-error-port))))
+
+  (computed-file
+   name
+   (with-imported-modules '((guix build union))
+     (gexp
+      (begin
+        (use-modules (guix build union)
+                     (srfi srfi-1)) ;for 'first' and 'last'
+
+        (define (thing->srcs thing)
+          (with-input-from-file (string-append thing "/.guix-channel")
+            (lambda ()
+              (let ((dirs (assoc-ref (cdr (read)) 'directory)))
+                (if dirs
+                    (map (lambda (x) (string-append thing "/" x)) dirs)
+                    (list thing))))))
+
+        (union-build (ungexp output)
+                     (append-map thing->srcs '#$channels)
+
+                     #:log-port (ungexp log-port)
+                     #:symlink symlink
+                     #:resolve-collision
+                     (ungexp resolve-collision)))))))
+
+(define (channels->combined-source-code channels)
+  (channels-union
+   "channels-sources"
+   (map channel->git-checkout channels)))
+
+(define-public (package-for-channels channels)
   (package
-   (inherit guix-from-core-channels)
-   (source (find guix-channel? channels))
-   (build-system channel-build-system)
-   (arguments
-    `(#:channels ,(remove guix-channel? channels)))
-   (inputs '())
-   (native-inputs '())
-   (propagated-inputs '())))
+    (name "channels")
+    (version "0.1.0")
+    (source (channels->combined-source-code
+             (remove guix-channel? channels)))
+    (build-system guile-build-system)
+    (arguments
+     (list
+      #:source-directory "."
+      #:phases
+      #~(modify-phases %standard-phases
+          (replace 'unpack
+            (lambda* (#:key source #:allow-other-keys)
+              (mkdir "source")
+              (chdir "source")
+              (copy-recursively source "."
+                                #:keep-mtime? #t
+                                #:follow-symlinks? #t)
+              (for-each (lambda (f)
+                          (false-if-exception (make-file-writable f)))
+                        (find-files ".")))))))
+    (inputs `(("guile" ,guile-next)
+              ("guix" ,guix-from-core-channels)))
+    (home-page "https://git.sr.ht/~abcdw/rde")
+    (synopsis "Combined package for channel source and bytecode files")
+    (description "Combined package for channel source and bytecode files.")
+    (license license:gpl3+)))
 
 (define-public core-channels-package
-  (guix-for-channels core-channels))
+  (package-for-channels core-channels))
+
+;; ((@ (rde api store) build-with-store) core-channels-package)
+
 
 (define-public deno
   (package
