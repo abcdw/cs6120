@@ -1,6 +1,7 @@
 (define-module (cs6120 core)
   #:use-module (json)
   #:use-module (ice-9 match)
+  #:use-module (ice-9 textual-ports)
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-43))
 
@@ -94,3 +95,33 @@
       (instructions->blocks (function-instructions x))))
    (assoc-ref bril-program "functions"))
   "hi")
+
+
+(define-public (identity-transformation)
+  (define input (get-string-all (current-input-port)))
+  (display input))
+
+(define-public (tdce-transformation)
+  (identity-transformation))
+
+;; TODO: [Andrew Tropin, 2025-02-13] Use guix for creating a script,
+;; which contains pipeline and can be re-executed from repl
+
+;; (scm->json bril-program )
+;; (run-bril bril-program)
+
+
+;; TODO: [Andrew Tropin, 2025-02-06] Implement DCE and LVN
+
+;; DCE is a Dead Code Elimination
+;; DCE: don't forget to re-run it a few times until it stops updating
+;; the blocks
+
+;; LVN is Local Value Numbering
+;; LVN: Use id semantics to make optimization from LVN deal with copy
+;; propogation
+
+;; LVN: Use add/mul commutativity. add a b produces the same value as add b a
+
+;; LVN: Constant propagation, we can use constants instead of id
+;; operation referencing a variable containing a constant value

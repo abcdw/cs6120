@@ -1,0 +1,1 @@
+command = "bril2json < {filename} |  guile -L ./src/guile -c '((@ (cs6120 core) tdce-transformation))' {args} | bril2txt"
