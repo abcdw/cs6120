@@ -28,7 +28,7 @@
      (lambda (_ acc x)
        (match acc
          ((current-block blocks block-id label mapping)
-          (let ((new-block (if (label? x) current-block (cons x current-block)))
+          (let ((new-block (cons x current-block))
                 (next-block-id (1+ block-id)))
             ;; (pk label mapping block-id)
             (if (or (member (instruction-op x) terminators)
