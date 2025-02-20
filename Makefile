@@ -21,7 +21,10 @@ env:
 THIS_REPO=~/work/abcdw/cs6120
 BRIL_REPO=~/work/sampsyo/bril
 
-# TODO: [Andrew Tropin, 2025-02-18] Add config for turnt
 check-tdce:
 	$(DEV_ENV) turnt -c $(THIS_REPO)/src/turnt/tdce.toml \
 	$(BRIL_REPO)/examples/test/tdce/*.bril
+
+check-lvn:
+	$(DEV_ENV) turnt -c $(THIS_REPO)/src/turnt/lvn.toml \
+	$(BRIL_REPO)/examples/test/lvn/*.bril

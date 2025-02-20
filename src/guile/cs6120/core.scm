@@ -222,13 +222,114 @@
      (list remove-unused-variables+)))
   (blocks->instrs new-blocks))
 
+(define (local-value-numbering-optimization block-instrs)
+  '((var . vn1)) ;; var-mapping
+  '((number . canonical-value-repr)) ;; vn-mapping
+  '(op vn1 vn2)
+
+
+  (define (op->canonical-value op var-mapping)
+    (define (var->value-number v)
+      (assoc-ref var-mapping v))
+    (cons (assoc-ref op "op")
+          (if (assoc "args" op)
+              (sort ;; We don't care about order of arguments, because
+                    ;; mul and add are comutative
+               (map var->value-number (vector->list (assoc-ref op "args")))
+               <)
+              (list (assoc-ref op "value")))))
+
+  (define (get-value-number canonical-value vn-mapping)
+    (any
+     (lambda (x)
+       (if (list= equal? (cdr x) canonical-value)
+           (car x)
+           #f))
+     vn-mapping))
+
+  (define (ensure-value-mapped canonical-value vn-mapping)
+    (if (get-value-number canonical-value vn-mapping)
+        vn-mapping
+        (cons (cons (length vn-mapping) canonical-value) vn-mapping)))
+
+  (define (add-var-mapping var vn var-mapping)
+    (cons (cons var vn) var-mapping))
+
+  (define (number->var vn var-mapping)
+    (any (lambda (x) (and (equal? (cdr x) vn) (car x)))
+         (reverse var-mapping)))
+
+  (define result
+    (fold
+     (lambda (op acc)
+       (match acc
+         ((instrs vn-mapping var-mapping)
+          (define can-val (op->canonical-value op var-mapping))
+          (define new-vn-mapping
+            (ensure-value-mapped can-val vn-mapping))
+
+          (format (current-error-port) "~y\n\n" acc)
+
+          (define (sideeffectful-op? op)
+            (member (assoc-ref op "op") '("print")))
+
+          (define new-instr
+            (if (get-value-number can-val vn-mapping)
+                (if (sideeffectful-op? op)
+                    (acons
+                     "args"
+                     (assoc-ref vn-mapping (get-value-number can-val vn-mapping))
+                     (alist-delete "args" op))
+                    `(("type" . "int")
+                      ("op" . "id")
+                      ("dest" . ,(assoc-ref op "dest"))
+                      ("args" . ,(vector (number->var
+                                          (get-value-number can-val vn-mapping)
+                                          var-mapping)))))
+                (if (assoc "args" op)
+                    (acons
+                     "args"
+                     (vector-map
+                      (lambda (i x)
+                        (number->var (assoc-ref var-mapping x) var-mapping))
+                      (assoc-ref op "args"))
+                     (alist-delete "args" op))
+                    op)))
+
+          (if (assoc "dest" op)
+              (list (cons new-instr instrs) new-vn-mapping
+                    (add-var-mapping
+                     (assoc-ref op "dest")
+                     (get-value-number can-val new-vn-mapping)
+                     var-mapping))
+              (list (cons new-instr instrs) new-vn-mapping var-mapping))
+          )))
+     '(() () ()) ;; (instrs vn-mapping var-mapping)
+     block-instrs))
+
+  (match result
+    ((instrs _ _) (reverse instrs))))
+
+(define (lvn instrs)
+  (define blocks (instructions->blocks instrs))
+  ;; (map
+  ;;  (lambda (x) ((@ (ice-9 pretty-print) pretty-print) x))
+  ;;  (car blocks))
+  (define new-blocks
+    (fold
+     (lambda (opt acc)
+       (update-blocks-instrs acc opt))
+     blocks
+     (list local-value-numbering-optimization)))
+  (blocks->instrs new-blocks))
+
 (define (comment)
   ;; (print-blocks tdce-combo-bril)
   (get-blocks bril-program)
 
   (define tdce-diamond-bril
     (call-with-input-file
-        "./src/bril/tdce/diamond.json"
+        "./src/bril/lvn/commute.json"
       (lambda (port)
         (json->scm port))))
   "he")
@@ -244,8 +345,17 @@
       (("guile") tdce)
       (("guile" "dkp") dkp)
       (else dkp)))
-  (scm->json (transform-program-instrs program tdce-function) (current-output-port)))
+  (scm->json (transform-program-instrs program tdce-function)
+             (current-output-port)))
 
+(define-public (lvn-transformation)
+  (define program (json->scm (current-input-port)))
+  (define tdce-function
+    (match (command-line)
+      (("guile" "-c") lvn)
+      (else identity)))
+  (scm->json (transform-program-instrs program tdce-function)
+             (current-output-port)))
 
 ;; TODO: [Andrew Tropin, 2025-02-06] Implement DCE and LVN
 
