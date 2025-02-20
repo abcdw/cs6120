@@ -144,6 +144,7 @@
      '()
      block-instrs))
 
+  ;; (format (current-error-port) "used-variables: ~a\n" used-variables)
   (fold-right
    (lambda (x acc)
      (if (and (assoc "dest" x)
@@ -156,47 +157,78 @@
 (define (tdce instrs)
   (define blocks (instructions->blocks instrs))
   ;; (map
+  ;;  (lambda (x) ((@ (ice-9 pretty-print) pretty-print) x (current-error-port)))
+  ;;  blocks)
+  (define new-blocks
+    (fold
+     (lambda (opt acc)
+       (update-blocks-instrs acc opt))
+     blocks
+     (list
+      remove-unused-variables
+      remove-unused-variables)))
+  (blocks->instrs new-blocks))
+
+
+(define (remove-unused-variables+ block-instrs)
+  "Semi-smartly remove unused variables."
+
+  ;; '(instrs currently-in-use )
+  ;; (format (current-error-port) "used-variables: ~a\n" used-variables)
+  (define result
+    (fold-right
+     (lambda (x acc)
+       (match acc
+         ((instrs variables-in-use)
+          (let ((new-variables-in-use
+                 (if (assoc "args" x) (vector->list (assoc-ref x "args")) '())))
+            (cond
+             ((and (assoc "dest" x)
+                   (not (member (assoc-ref x "dest") variables-in-use)))
+              acc)
+
+             ((and (assoc "dest" x)
+                   (member (assoc-ref x "dest") variables-in-use))
+              (list (cons x instrs)
+                    (lset-union
+                     equal?
+                     (lset-difference
+                      equal?
+                      variables-in-use
+                      (list (assoc-ref x "dest")))
+                     new-variables-in-use)))
+
+             ;; TODO: [Andrew Tropin, 2025-02-20] Update variables-in-use
+             (else (list
+                    (cons x instrs)
+                    (lset-union equal? variables-in-use new-variables-in-use)))))
+          )))
+     '(() ())
+     block-instrs))
+
+  (match result
+    ((instrs _) instrs)))
+
+(define (dkp instrs)
+  (define blocks (instructions->blocks instrs))
+  ;; (map
   ;;  (lambda (x) ((@ (ice-9 pretty-print) pretty-print) x))
   ;;  (car blocks))
-  (blocks->instrs (update-blocks-instrs blocks remove-unused-variables)))
-
-;; ((@ (ice-9 pretty-print) pretty-print)
-;;  (transform-program-instrs tdce-combo-bril tdce))
-
-;; (define (edges->adjacency-list edges)
-;;   (define (add-vertex v)
-;;     (lambda (l)
-;;       (cons v l)))
-;;   (reverse
-;;    (map
-;;     (lambda (x)
-;;       (cons
-;;        (car x)
-;;        (reverse (cdr x))))
-;;     (fold
-;;      (lambda (x acc)
-;;        (update-alist acc (car x) (add-vertex (cdr x)) '()))
-;;      '()
-;;      edges))))
-
-;; (define (topolgical-sort adjacency-list))
-
-
-;; (update-alist '((key . (hi)) (key2 . (hello)))
-;;               'key (lambda (x) '(hello there)) '())
-
-
-;; (display (blocks->bril-program
-;;           (vector-ref (get-blocks bril-program) 0)))
-;; (newline)
+  (define new-blocks
+    (fold
+     (lambda (opt acc)
+       (update-blocks-instrs acc opt))
+     blocks
+     (list remove-unused-variables+)))
+  (blocks->instrs new-blocks))
 
 (define (comment)
-  (print-blocks tdce-combo-bril)
+  ;; (print-blocks tdce-combo-bril)
   (get-blocks bril-program)
 
-  (define tdce-combo-bril
+  (define tdce-diamond-bril
     (call-with-input-file
-        "./src/bril/tdce/combo.json"
+        "./src/bril/tdce/diamond.json"
       (lambda (port)
         (json->scm port))))
   "he")
@@ -207,13 +239,12 @@
 
 (define-public (tdce-transformation)
   (define program (json->scm (current-input-port)))
-  (scm->json (transform-program-instrs program tdce) (current-output-port)))
-
-;; TODO: [Andrew Tropin, 2025-02-13] Use guix for creating a script,
-;; which contains pipeline and can be re-executed from repl
-
-;; (scm->json bril-program )
-;; (run-bril bril-program)
+  (define tdce-function
+    (match (command-line)
+      (("guile") tdce)
+      (("guile" "dkp") dkp)
+      (else dkp)))
+  (scm->json (transform-program-instrs program tdce-function) (current-output-port)))
 
 
 ;; TODO: [Andrew Tropin, 2025-02-06] Implement DCE and LVN
