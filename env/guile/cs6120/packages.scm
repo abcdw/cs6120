@@ -22,114 +22,16 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (srfi srfi-1)
   #:use-module (nonguix build-system binary)
+  #:use-module (rde packages guix)
 
   #:export (guix-from-core-channels
             core-channels-package))
 
-(define (get-guix-channel channels)
-  (car
-   (filter (lambda (x) (equal? (channel-name x) 'guix)) channels)))
+(define guix-from-core-channels
+  (make-guix-package core-channels))
 
-(define-public guix-from-core-channels
-  (let ((commit (channel-commit (get-guix-channel core-channels))))
-    (package
-      (inherit guix)
-      (version (string-append
-                (package-version guix) "-" (string-take commit 7)))
-      (source
-       (git-checkout
-        (url "https://git.savannah.gnu.org/git/guix.git")
-        (commit commit)))
-      (arguments
-       (substitute-keyword-arguments (package-arguments guix)
-         ((#:tests? _)
-          #f)
-         ((#:phases phases)
-          #~(modify-phases #$phases (delete 'check)))
-         ((#:configure-flags flags #~'())
-          #~(append
-             #$flags
-             (list
-              #$(string-append "--with-channel-commit=" commit))))))
-
-      (inputs (modify-inputs (package-inputs guix)
-                (replace "guile" guile-next))))))
-
-(define (channel->git-checkout channel)
-  (git-checkout
-   (url (channel-url channel))
-   (commit (channel-commit channel))))
-
-(define* (channels-union name channels
-                         #:key
-                         (quiet? #f)
-                         (resolve-collision 'resolve-collision/default))
-  "Return a directory that is the union of CHANNELS sources."
-  (define log-port
-    (if quiet?
-        (gexp (%make-void-port "w"))
-        (gexp (current-error-port))))
-
-  (computed-file
-   name
-   (with-imported-modules '((guix build union))
-     (gexp
-      (begin
-        (use-modules (guix build union)
-                     (srfi srfi-1)) ;for 'first' and 'last'
-
-        (define (thing->srcs thing)
-          (with-input-from-file (string-append thing "/.guix-channel")
-            (lambda ()
-              (let ((dirs (assoc-ref (cdr (read)) 'directory)))
-                (if dirs
-                    (map (lambda (x) (string-append thing "/" x)) dirs)
-                    (list thing))))))
-
-        (union-build (ungexp output)
-                     (append-map thing->srcs '#$channels)
-
-                     #:log-port (ungexp log-port)
-                     #:symlink symlink
-                     #:resolve-collision
-                     (ungexp resolve-collision)))))))
-
-(define (channels->combined-source-code channels)
-  (channels-union
-   "channels-sources"
-   (map channel->git-checkout channels)))
-
-(define-public (package-for-channels channels)
-  (package
-    (name "channels")
-    (version "0.1.0")
-    (source (channels->combined-source-code
-             (remove guix-channel? channels)))
-    (build-system guile-build-system)
-    (arguments
-     (list
-      #:source-directory "."
-      #:phases
-      #~(modify-phases %standard-phases
-          (replace 'unpack
-            (lambda* (#:key source #:allow-other-keys)
-              (mkdir "source")
-              (chdir "source")
-              (copy-recursively source "."
-                                #:keep-mtime? #t
-                                #:follow-symlinks? #t)
-              (for-each (lambda (f)
-                          (false-if-exception (make-file-writable f)))
-                        (find-files ".")))))))
-    (inputs `(("guile" ,guile-next)
-              ("guix" ,guix-from-core-channels)))
-    (home-page "https://git.sr.ht/~abcdw/rde")
-    (synopsis "Combined package for channel source and bytecode files")
-    (description "Combined package for channel source and bytecode files.")
-    (license license:gpl3+)))
-
-(define-public core-channels-package
-  (package-for-channels core-channels))
+(define core-channels-package
+  (make-channels-package core-channels))
 
 ;; ((@ (rde api store) build-with-store) core-channels-package)
 
